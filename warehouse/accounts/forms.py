@@ -10,39 +10,314 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+
+import disposable_email_domains
+import jinja2
 import wtforms
+import wtforms.fields.html5
+
+import warehouse.utils.webauthn as webauthn
 
 from warehouse import forms
+from warehouse.accounts.interfaces import TooManyFailedLogins
+from warehouse.accounts.models import DisableReason
+from warehouse.email import send_password_compromised_email_hibp
+from warehouse.utils.otp import TOTP_LENGTH
 
 
-class LoginForm(forms.Form):
+class UsernameMixin:
+
+    username = wtforms.StringField(validators=[wtforms.validators.DataRequired()])
+
+    def validate_username(self, field):
+        userid = self.user_service.find_userid(field.data)
+
+        if userid is None:
+            raise wtforms.validators.ValidationError("No user found with that username")
+
+
+class TOTPValueMixin:
+
+    totp_value = wtforms.StringField(
+        validators=[
+            wtforms.validators.DataRequired(),
+            wtforms.validators.Regexp(
+                rf"^[0-9]{{{TOTP_LENGTH}}}$",
+                message=f"TOTP code must be {TOTP_LENGTH} digits.",
+            ),
+        ]
+    )
+
+
+class WebAuthnCredentialMixin:
+
+    credential = wtforms.StringField(wtforms.validators.DataRequired())
+
+
+class NewUsernameMixin:
 
     username = wtforms.StringField(
         validators=[
             wtforms.validators.DataRequired(),
-            wtforms.validators.Length(max=50),
-        ],
+            wtforms.validators.Length(
+                max=50, message=("Choose a username with 50 characters or less.")
+            ),
+            # the regexp below must match the CheckConstraint
+            # for the username field in accounts.models.User
+            wtforms.validators.Regexp(
+                r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$",
+                message=(
+                    "The username is invalid. Usernames "
+                    "must be composed of letters, numbers, "
+                    "dots, hyphens and underscores. And must "
+                    "also start and finish with a letter or number. "
+                    "Choose a different username."
+                ),
+            ),
+        ]
     )
-
-    password = wtforms.PasswordField(
-        validators=[
-            wtforms.validators.DataRequired(),
-        ],
-    )
-
-    def __init__(self, *args, login_service, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.login_service = login_service
 
     def validate_username(self, field):
-        userid = self.login_service.find_userid(field.data)
+        if self.user_service.find_userid(field.data) is not None:
+            raise wtforms.validators.ValidationError(
+                "This username is already being used by another "
+                "account. Choose a different username."
+            )
 
-        if userid is None:
-            raise wtforms.validators.ValidationError("Invalid user.")
+
+class PasswordMixin:
+
+    password = wtforms.PasswordField(validators=[wtforms.validators.DataRequired()])
+
+    def __init__(self, *args, check_password_metrics_tags=None, **kwargs):
+        self._check_password_metrics_tags = check_password_metrics_tags
+        super().__init__(*args, **kwargs)
 
     def validate_password(self, field):
-        userid = self.login_service.find_userid(self.username.data)
+        userid = self.user_service.find_userid(self.username.data)
         if userid is not None:
-            if not self.login_service.check_password(userid, field.data):
-                raise wtforms.validators.ValidationError("Invalid password.")
+            try:
+                if not self.user_service.check_password(
+                    userid, field.data, tags=self._check_password_metrics_tags
+                ):
+                    raise wtforms.validators.ValidationError(
+                        "The password is invalid. Try again."
+                    )
+            except TooManyFailedLogins:
+                raise wtforms.validators.ValidationError(
+                    "There have been too many unsuccessful login attempts, "
+                    "try again later."
+                ) from None
+
+
+class NewPasswordMixin:
+
+    new_password = wtforms.PasswordField(
+        validators=[
+            wtforms.validators.DataRequired(),
+            forms.PasswordStrengthValidator(
+                user_input_fields=["full_name", "username", "email"]
+            ),
+        ]
+    )
+
+    password_confirm = wtforms.PasswordField(
+        validators=[
+            wtforms.validators.DataRequired(),
+            wtforms.validators.EqualTo(
+                "new_password", "Your passwords don't match. Try again."
+            ),
+        ]
+    )
+
+    # These fields are here to provide the various user-defined fields to the
+    # PasswordStrengthValidator of the new_password field, to ensure that the
+    # newly set password doesn't contain any of them
+    full_name = wtforms.StringField()  # May be empty
+    username = wtforms.StringField(validators=[wtforms.validators.DataRequired()])
+    email = wtforms.StringField(validators=[wtforms.validators.DataRequired()])
+
+    def __init__(self, *args, breach_service, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._breach_service = breach_service
+
+    def validate_new_password(self, field):
+        if self._breach_service.check_password(
+            field.data, tags=["method:new_password"]
+        ):
+            raise wtforms.validators.ValidationError(
+                jinja2.Markup(self._breach_service.failure_message)
+            )
+
+
+class NewEmailMixin:
+
+    email = wtforms.fields.html5.EmailField(
+        validators=[
+            wtforms.validators.DataRequired(),
+            wtforms.validators.Regexp(
+                r".+@.+\..+", message=("The email address isn't valid. Try again.")
+            ),
+        ]
+    )
+
+    def validate_email(self, field):
+        userid = self.user_service.find_userid_by_email(field.data)
+
+        if userid and userid == self.user_id:
+            raise wtforms.validators.ValidationError(
+                f"This email address is already being used by this account. "
+                f"Use a different email."
+            )
+        if userid:
+            raise wtforms.validators.ValidationError(
+                f"This email address is already being used by another account. "
+                f"Use a different email."
+            )
+
+        domain = field.data.split("@")[-1]
+        if domain in disposable_email_domains.blacklist:
+            raise wtforms.validators.ValidationError(
+                "You can't use an email address from this domain. Use a "
+                "different email."
+            )
+
+
+class HoneypotMixin:
+
+    """ A mixin to catch spammers. This field should always be blank """
+
+    confirm_form = wtforms.StringField()
+
+
+class RegistrationForm(
+    NewUsernameMixin, NewEmailMixin, NewPasswordMixin, HoneypotMixin, forms.Form
+):
+
+    full_name = wtforms.StringField(
+        validators=[
+            wtforms.validators.Length(
+                max=100,
+                message=(
+                    "The name is too long. "
+                    "Choose a name with 100 characters or less."
+                ),
+            )
+        ]
+    )
+
+    def __init__(self, *args, user_service, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_service = user_service
+        self.user_id = None
+
+
+class LoginForm(PasswordMixin, UsernameMixin, forms.Form):
+    def __init__(self, *args, request, user_service, breach_service, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request = request
+        self.user_service = user_service
+        self.breach_service = breach_service
+
+    def validate_password(self, field):
+        # Before we try to validate the user's password, we'll first to check to see if
+        # they are disabled.
+        userid = self.user_service.find_userid(self.username.data)
+        if userid is not None:
+            is_disabled, disabled_for = self.user_service.is_disabled(userid)
+            if is_disabled and disabled_for == DisableReason.CompromisedPassword:
+                raise wtforms.validators.ValidationError(
+                    jinja2.Markup(self.breach_service.failure_message)
+                )
+
+        # Do our typical validation of the password.
+        super().validate_password(field)
+
+        # If we have a user ID, then we'll go and check it against our breached password
+        # service. If the password has appeared in a breach or is otherwise compromised
+        # we will disable the user and reject the login.
+        if userid is not None:
+            if self.breach_service.check_password(
+                field.data, tags=["method:auth", "auth_method:login_form"]
+            ):
+                user = self.user_service.get_user(userid)
+                send_password_compromised_email_hibp(self.request, user)
+                self.user_service.disable_password(
+                    user.id, reason=DisableReason.CompromisedPassword
+                )
+                raise wtforms.validators.ValidationError(
+                    jinja2.Markup(self.breach_service.failure_message)
+                )
+
+
+class _TwoFactorAuthenticationForm(forms.Form):
+    def __init__(self, *args, user_id, user_service, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_id = user_id
+        self.user_service = user_service
+
+
+class TOTPAuthenticationForm(TOTPValueMixin, _TwoFactorAuthenticationForm):
+    def validate_totp_value(self, field):
+        totp_value = field.data.encode("utf8")
+        if not self.user_service.check_totp_value(self.user_id, totp_value):
+            raise wtforms.validators.ValidationError("Invalid TOTP code.")
+
+
+class WebAuthnAuthenticationForm(WebAuthnCredentialMixin, _TwoFactorAuthenticationForm):
+    __params__ = ["credential"]
+
+    def __init__(self, *args, challenge, origin, icon_url, rp_id, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.challenge = challenge
+        self.origin = origin
+        self.icon_url = icon_url
+        self.rp_id = rp_id
+
+    def validate_credential(self, field):
+        try:
+            assertion_dict = json.loads(field.data.encode("utf8"))
+        except json.JSONDecodeError:
+            raise wtforms.validators.ValidationError(
+                f"Invalid WebAuthn assertion: Bad payload"
+            )
+
+        try:
+            validated_credential = self.user_service.verify_webauthn_assertion(
+                self.user_id,
+                assertion_dict,
+                challenge=self.challenge,
+                origin=self.origin,
+                icon_url=self.icon_url,
+                rp_id=self.rp_id,
+            )
+
+        except webauthn.AuthenticationRejectedException as e:
+            raise wtforms.validators.ValidationError(str(e))
+
+        self.validated_credential = validated_credential
+
+
+class RequestPasswordResetForm(forms.Form):
+    username_or_email = wtforms.StringField(
+        validators=[wtforms.validators.DataRequired()]
+    )
+
+    def __init__(self, *args, user_service, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_service = user_service
+
+    def validate_username_or_email(self, field):
+        username_or_email = self.user_service.get_user_by_username(field.data)
+        if username_or_email is None:
+            username_or_email = self.user_service.get_user_by_email(field.data)
+        if username_or_email is None:
+            raise wtforms.validators.ValidationError(
+                "No user found with that username or email"
+            )
+
+
+class ResetPasswordForm(NewPasswordMixin, forms.Form):
+
+    pass

@@ -12,8 +12,14 @@
 
 import collections
 import functools
+import operator
+
+from itertools import chain
+
+from sqlalchemy.orm.session import Session
 
 from warehouse import db
+from warehouse.cache.origin.derivers import html_cache_deriver
 from warehouse.cache.origin.interfaces import IOriginCache
 
 
@@ -27,7 +33,7 @@ def store_purge_keys(config, session, flush_context):
 
     # Go through each new, changed, and deleted object and attempt to store
     # a cache key that we'll want to purge when the session has been committed.
-    for obj in (session.new | session.dirty | session.deleted):
+    for obj in session.new | session.dirty | session.deleted:
         try:
             key_maker = cache_keys[obj.__class__]
         except KeyError:
@@ -42,15 +48,14 @@ def execute_purge(config, session):
 
     try:
         cacher_factory = config.find_service_factory(IOriginCache)
-    except ValueError:
+    except LookupError:
         return
 
     cacher = cacher_factory(None, config)
     cacher.purge(purges)
 
 
-def origin_cache(seconds, keys=None, stale_while_revalidate=None,
-                 stale_if_error=None):
+def origin_cache(seconds, keys=None, stale_while_revalidate=None, stale_if_error=None):
     if keys is None:
         keys = []
 
@@ -65,13 +70,13 @@ def origin_cache(seconds, keys=None, stale_while_revalidate=None,
 
             try:
                 cacher = request.find_service(IOriginCache)
-            except ValueError:
+            except LookupError:
                 pass
             else:
                 request.add_response_callback(
                     functools.partial(
                         cacher.cache,
-                        sorted(context_keys + keys),
+                        context_keys + keys,
                         seconds=seconds,
                         stale_while_revalidate=stale_while_revalidate,
                         stale_if_error=stale_if_error,
@@ -79,12 +84,24 @@ def origin_cache(seconds, keys=None, stale_while_revalidate=None,
                 )
 
             return view(context, request)
+
         return wrapped
 
     return inner
 
 
 CacheKeys = collections.namedtuple("CacheKeys", ["cache", "purge"])
+
+
+def key_factory(keystring, iterate_on=None):
+    def generate_key(obj):
+        if iterate_on:
+            for itr in operator.attrgetter(iterate_on)(obj):
+                yield keystring.format(itr=itr, obj=obj)
+        else:
+            yield keystring.format(obj=obj)
+
+    return generate_key
 
 
 def key_maker_factory(cache_keys, purge_keys):
@@ -96,33 +113,39 @@ def key_maker_factory(cache_keys, purge_keys):
 
     def key_maker(obj):
         return CacheKeys(
+            # Note: this does not support setting the `cache` argument via
+            # multiple `key_factories` as we do with `purge` because there is
+            # a limit to how many surrogate keys we can attach to a single HTTP
+            # response, and being able to use use `iterate_on` would allow this
+            # size to be unbounded.
+            # ref: https://github.com/pypa/warehouse/pull/3189
             cache=[k.format(obj=obj) for k in cache_keys],
-            purge=[k.format(obj=obj) for k in purge_keys],
+            purge=chain.from_iterable(key(obj) for key in purge_keys),
         )
 
     return key_maker
 
 
-def register_origin_cache_keys(config, klass, cache_keys=None,
-                               purge_keys=None):
+def register_origin_cache_keys(config, klass, cache_keys=None, purge_keys=None):
     key_makers = config.registry.setdefault("cache_keys", {})
-    key_makers[klass] = key_maker_factory(
-        cache_keys=cache_keys,
-        purge_keys=purge_keys,
-    )
+    key_makers[klass] = key_maker_factory(cache_keys=cache_keys, purge_keys=purge_keys)
+
+
+def receive_set(attribute, config, target):
+    cache_keys = config.registry["cache_keys"]
+    session = Session.object_session(target)
+    purges = session.info.setdefault("warehouse.cache.origin.purges", set())
+    key_maker = cache_keys[attribute]
+    keys = key_maker(target).purge
+    purges.update(list(keys))
 
 
 def includeme(config):
     if "origin_cache.backend" in config.registry.settings:
         cache_class = config.maybe_dotted(
-            config.registry.settings["origin_cache.backend"],
+            config.registry.settings["origin_cache.backend"]
         )
-        config.register_service_factory(
-            cache_class.create_service,
-            IOriginCache,
-        )
+        config.register_service_factory(cache_class.create_service, IOriginCache)
+        config.add_view_deriver(html_cache_deriver)
 
-    config.add_directive(
-        "register_origin_cache_keys",
-        register_origin_cache_keys,
-    )
+    config.add_directive("register_origin_cache_keys", register_origin_cache_keys)

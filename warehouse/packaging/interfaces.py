@@ -13,30 +13,11 @@
 from zope.interface import Interface
 
 
-class IDownloadStatService(Interface):
-
-    def get_daily_stats(project):
-        """
-        Return the daily download counts for the given project.
-        """
-
-    def get_weekly_stats(project):
-        """
-        Return the weekly download counts for the given project.
-        """
-
-    def get_monthly_stats(project):
-        """
-        Return the monthly download counts for the given project.
-        """
-
-
 class IFileStorage(Interface):
-
     def create_service(context, request):
         """
         Create the service, given the context and request for which it is being
-        created for.
+        created for, passing a name for settings.
         """
 
     def get(path):
@@ -50,4 +31,17 @@ class IFileStorage(Interface):
         Save the file located at file_path to the file storage at the location
         specified by path. An additional meta keyword argument may contain
         extra information that an implementation may or may not store.
+        """
+
+
+class IDocsStorage(Interface):
+    def create_service(context, request):
+        """
+        Create the service, given the context and request for which it is being
+        created for, passing a name for settings.
+        """
+
+    def remove_by_prefix(prefix):
+        """
+        Remove all files matching the given prefix.
         """

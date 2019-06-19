@@ -10,6 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+from packaging.version import parse
 from pyramid.httpexceptions import HTTPMovedPermanently
 from pyramid.view import view_config
 from sqlalchemy import func
@@ -17,17 +19,17 @@ from sqlalchemy.orm import joinedload
 
 from warehouse.cache.http import cache_control
 from warehouse.cache.origin import origin_cache
-from warehouse.packaging.models import JournalEntry, File, Project, Release
+from warehouse.packaging.models import File, JournalEntry, Project, Release
 
 
 @view_config(
     route_name="legacy.api.simple.index",
     renderer="legacy/api/simple/index.html",
     decorator=[
-        cache_control(10 * 60),               # 10 minutes
+        cache_control(10 * 60),  # 10 minutes
         origin_cache(
-            1 * 24 * 60 * 60,                 # 1 day
-            stale_while_revalidate=5 * 60,    # 5 minutes
+            1 * 24 * 60 * 60,  # 1 day
+            stale_while_revalidate=5 * 60,  # 5 minutes
             stale_if_error=1 * 24 * 60 * 60,  # 1 day
         ),
     ],
@@ -40,8 +42,8 @@ def simple_index(request):
     # Fetch the name and normalized name for all of our projects
     projects = (
         request.db.query(Project.name, Project.normalized_name)
-                  .order_by(Project.normalized_name)
-                  .all()
+        .order_by(Project.normalized_name)
+        .all()
     )
 
     return {"projects": projects}
@@ -49,12 +51,13 @@ def simple_index(request):
 
 @view_config(
     route_name="legacy.api.simple.detail",
+    context=Project,
     renderer="legacy/api/simple/detail.html",
     decorator=[
-        cache_control(10 * 60),               # 10 minutes
+        cache_control(10 * 60),  # 10 minutes
         origin_cache(
-            1 * 24 * 60 * 60,                 # 1 day
-            stale_while_revalidate=5 * 60,    # 5 minutes
+            1 * 24 * 60 * 60,  # 1 day
+            stale_while_revalidate=5 * 60,  # 5 minutes
             stale_if_error=1 * 24 * 60 * 60,  # 1 day
         ),
     ],
@@ -63,34 +66,24 @@ def simple_detail(project, request):
     # TODO: Handle files which are not hosted on PyPI
 
     # Make sure that we're using the normalized version of the URL.
-    if (project.normalized_name !=
-            request.matchdict.get("name", project.normalized_name)):
+    if project.normalized_name != request.matchdict.get(
+        "name", project.normalized_name
+    ):
         return HTTPMovedPermanently(
-            request.current_route_path(name=project.normalized_name),
+            request.current_route_path(name=project.normalized_name)
         )
 
     # Get the latest serial number for this project.
-    serial = (
-        request.db.query(func.max(JournalEntry.id))
-                  .filter(JournalEntry.name == project.name)
-                  .scalar()
-    )
-    request.response.headers["X-PyPI-Last-Serial"] = str(serial or 0)
+    request.response.headers["X-PyPI-Last-Serial"] = str(project.last_serial)
 
     # Get all of the files for this project.
-    files = (
+    files = sorted(
         request.db.query(File)
         .options(joinedload(File.release))
-        .filter(
-            File.name == project.name,
-            File.version.in_(
-                request.db.query(Release)
-                          .filter(Release.project == project)
-                          .with_entities(Release.version)
-            )
-        )
-        .order_by(File.filename)
-        .all()
+        .join(Release)
+        .filter(Release.project == project)
+        .all(),
+        key=lambda f: (parse(f.release.version), f.filename),
     )
 
     return {"project": project, "files": files}

@@ -13,319 +13,291 @@
 -#}
 {% extends "base.html" %}
 
-
 {% macro url_icon(name, url) -%}
 
 {% set parsed = url|urlparse %}
 
 {% if name|lower == "download" %}
-   {% set icon = "cloud-download" %}
-{% elif parsed.netloc == "github.com" %}
-  {% set icon = "github" %}
-{% elif parsed.netloc == "bitbucket.org" %}
-  {% set icon = "bitbucket" %}
-{% elif parsed.netloc == "gratipay.com" or parsed.netloc == "gittip.com" %}
-  {% set icon = "gratipay" %}
+   {% set icon = "fas fa-cloud-download-alt" %}
+{% elif name|lower in ["home", "homepage", "home page"] %}
+  {% set icon = "fas fa-home" %}
+{% elif name.lower().startswith(("docs", "documentation")) or parsed.netloc in ["readthedocs.io", "readthedocs.org", "rtfd.io", "rtfd.org"] or parsed.netloc.endswith((".readthedocs.io", ".readthedocs.org", ".rtfd.io", ".rtfd.org")) or parsed.netloc.startswith(("docs.", "documentation.")) %}
+  {% set icon = "fas fa-book" %}
+{% elif name.lower().startswith(("bug", "issue", "tracker", "report")) %}
+  {% set icon = "fas fa-bug" %}
+{% elif name.lower().startswith(("funding", "donate", "donation")) %}
+  {% set icon = "fas fa-donate" %}
+{% elif parsed.netloc in ["github.com", "github.io"] or parsed.netloc.endswith((".github.com", ".github.io")) %}
+  {% set icon = "fab fa-github" %}
+{% elif parsed.netloc == "gitlab.com" or parsed.netloc.endswith(".gitlab.com") %}
+  {% set icon = "fab fa-gitlab" %}
+{% elif parsed.netloc == "gitter.im" or parsed.netloc.endswith(".gitter.im") %}
+  {% set icon = "fab fa-gitter" %}
+{% elif parsed.netloc == "google.com" or parsed.netloc.endswith(".google.com") %}
+  {% set icon = "fab fa-google" %}
+{% elif parsed.netloc == "bitbucket.org" or parsed.netloc.endswith(".bitbucket.org") %}
+  {% set icon = "fab fa-bitbucket" %}
 {% elif parsed.netloc == "reddit.com" or parsed.netloc.endswith(".reddit.com") %}
-  {% set icon = "reddit-alien" %}
-{% elif parsed.netloc == "slack.com" or parsed.netloc.endswith(".slack.com") %}
-  {% set icon = "slack" %}
-{% elif parsed.netloc == "twitter.com" %}
-  {% set icon = "twitter" %}
-{% elif name|lower == "home" or name|lower == "homepage" or name|lower == "home page" %}
-  {% set icon = "home" %}
+  {% set icon = "fab fa-reddit-alien" %}
+{% elif name.lower().startswith("slack") or parsed.netloc == "slack.com" or parsed.netloc.endswith(".slack.com") %}
+  {% set icon = "fab fa-slack" %}
+{% elif parsed.netloc == "twitter.com" or parsed.netloc.endswith(".twitter.com") %}
+  {% set icon = "fab fa-twitter" %}
+{% elif parsed.netloc in ["ci.appveyor.com", "circleci.com", "codecov.io", "coveralls.io", "shippable.com", "travis-ci.com", "travis-ci.org"] or parsed.netloc.endswith((".appveyor.com", ".circleci.com", ".codecov.io", ".coveralls.io", ".shippable.com", ".travis-ci.org", ".travis-ci.com")) %}
+  {% set icon = "fas fa-tasks" %}
+{% elif parsed.netloc in ["cheeseshop.python.org", "pypi.io", "pypi.org", "pypi.python.org"] %}
+  {% set icon = "fas fa-cube" %}
+{% elif parsed.netloc == "python.org" or parsed.netloc.endswith(".python.org") %}
+  {% set icon = "fab fa-python" %}
 {% else %}
-  {% set icon = "external-link-square" %}
+  {% set icon = "fas fa-external-link-square-alt" %}
 {% endif %}
 
-<i class="fa fa-{{ icon }}"></i>
+<i class="{{ icon }}" aria-hidden="true"></i>
 
 {%- endmacro %}
 
 
 {% macro project_snippet(release) -%}
-
-{% set version = release.version %}
-{% set uploader_username = release.uploader.username %}
-{% set uploader_name = release.uploader.name|default(uploader_username, true) %}
-
-<div class="package-snippet">
-  <h3 class="title"><a href="{{ request.route_path('packaging.project', name=release.project.normalized_name) }}">{{ release.project.name }}</a></h3>
-
-  <p class="meta" {{ l20n("packageSnippetMeta", version=version, user=uploader_name) }}>
-    <span class="version">{{ version }}</span> uploaded by <a href="{{ request.route_path('accounts.profile', username=uploader_username) }}">{{ uploader_name }}</a>
-  </p>
-
-  <p class="description">{{ release.summary }}</p>
-</div>
+<a class="package-snippet" href="{{ request.route_path('packaging.project', name=release.project.normalized_name) }}">
+  <h3 class="package-snippet__title">
+    <span class="pacakge-snippet__name">{{ release.project.name }}</span>
+    <span class="package-snippet__version">{{ release.version }}</span>
+  </h3>
+  <p class="package-snippet__description">{{ release.summary }}</p>
+</a>
 {%- endmacro %}
 
 
+{%- macro pip_command(release, request_route, test_environment) -%}
+  {%- if test_environment -%}
+    {% set index_url = " -i https://test.pypi.org/simple/" %}
+  {%- endif -%}
+
+  {%- if request_route == "packaging.release" -%}
+    {% set project_version = "==" + release.version %}
+  {%- endif -%}
+
+  pip install{{ index_url }} {{ release.project.name }}{{ project_version }}
+{%- endmacro -%}
+
 {% block title %}{{ release.project.name }}{% endblock %}
 
+{% block description %}{{ release.summary }}{% endblock %}
+
+{% block canonical_url %}{{ request.route_url('packaging.project', name=release.project.name) }}{% endblock %}
+
 {% block content %}
-<section class="banner-block ">
+<section class="banner">
   <div class="package-header">
-    <p class="license" {{ l20n("projectLicense", license="TODO") }}>License: <a href="TODO">TODO</a></p>
-    <h1>{{ release.project.name }} {{ release.version }}</h1>
-    <p class="description">{% if release.summary %}{{ release.summary }}{% endif %}</p>
+    <div class="package-header__left">
+      <h1 class="package-header__name">
+        {{ release.project.name }} {{ release.version }}
+      </h1>
 
-    <p class="pip-instructions">
-      <span>pip install {{ release.project.normalized_name }}</span>
-      <a href="clicking-here-copies-text">
-        <i class="fa fa-copy"></i>
-        <span class="sr-only">Copy PIP instructions<span>
-      </a>
-    </p>
-    <p class="help-link"><a href="#" {{ l20n("howToInstall") }}>How do I install this?</a></p>
-  </div>
-</section>
-
-<section class="package-status">
-  <div class="site-container">
-    {% if release.version != all_releases[0].version %}
-    <a class="status-badge -bad" {{ l20n("newerVersionAvailable", version=all_releases[0].version) }} href="{{ request.route_path('packaging.release', name=release.project.name, version=all_releases[0].version) }}">Newer version available ({{ all_releases[0].version }})</a>
-    {% else %}
-    <a class="status-badge -good" {{ l20n("latestVersion") }} href="{{ request.route_path('packaging.release', name=release.project.name, version=release.version) }}">Latest Version</a>
-    {% endif %}
-
-    {# TODO: We need to actually make these do something. #}
-    <a class="status-badge -unknown" {{ l20n("depStatusUnknown") }} href="#">Dependencies status unknown</a>
-    <a class="status-badge -unknown" {{ l20n("testStatusUnknown") }} href="#">Test status unknown</a>
-    <a class="status-badge -unknown" {{ l20n("testCoverageUnknown") }} href="#">Test coverage unknown</a>
-  </div>
-</section>
-
-<section class="horizontal-section -grey -thin">
-  <div class="site-container">
-    <div class="package-links">
-      <nav class="horizontal-menu">
-        {% for name, url in release.urls.items() %}
-        <a class="link" href="{{ url }}" rel="nofollow">
-          {# TODO: We need to figure out a way to get better icons here, like fa-github, fa-book, etc. #}
-          {{ url_icon(name, url) }}{{ name }}
-        </a>
-        {% endfor %}
-      </nav>
-      <p class="author">
-        <span {{ l20n("releasedAgoBy", when=release.created|format_date(), by=release.uploader.name|default(release.uploader.username, true)) }}>Uploaded <time class="-js-relative-time" datetime="{{ release.created|format_datetime('yyyy-MM-ddTHH:mm:ss') }}">{{ release.created|format_datetime() }}</time> by <a href="{{ request.route_path('accounts.profile', username=release.uploader.username) }}">{{ release.uploader.name|default(release.uploader.username, true) }}</a></span>
-        <a href="{{ request.route_path('accounts.profile', username=release.uploader.username) }}"><img src="{{ gravatar(release.uploader.email, size=40) }}" class="avatar" height="40" width="40" alt="{{ release.uploader.name|default(release.uploader.username, true) }}"></a>
+      {% if files %}
+      <p class="package-header__pip-instructions">
+        <span id="pip-command">{{ pip_command(release, request.matched_route.name, testPyPI) }}</span>
+        <button class="-js-copy-pip-command tooltipped tooltipped-s" data-clipboard-target="#pip-command" aria-label="Copy to clipboard" data-original-label="Copy to clipboard">
+          <i class="fa fa-copy" aria-hidden="true"></i>
+          <span class="sr-only">Copy PIP instructions<span>
+        </button>
       </p>
+      {% endif %}
+    </div>
+
+    <div class="package-header__right">
+      {% if release.version|parse_version > latest_version.version|parse_version %}
+      <a class="status-badge status-badge--warn" href="{{ request.route_path('packaging.project', name=release.project.name) }}">Stable version available ({{ latest_version.version }})</a>
+      {% elif release.version|parse_version != latest_version.version|parse_version %}
+      <a class="status-badge status-badge--bad" href="{{ request.route_path('packaging.project', name=release.project.name) }}">Newer version available ({{ latest_version.version }})</a>
+      {% else %}
+      <a class="status-badge status-badge--good" href="{{ request.route_path('packaging.project', name=release.project.name) }}">Latest version</a>
+      {% endif %}
+      <p class="package-header__date">Last released: {{ humanize(release.created) }}</p>
     </div>
   </div>
 </section>
 
-<section>
+<section class="horizontal-section horizontal-section--grey horizontal-section--thin">
   <div class="site-container">
-    <div class="vertical-tabs-container">
-      <div class="vertical-tabs">
+    <div class="split-layout split-layout--middle package-description">
+    {% if release.summary %}
+      <p class="package-description__summary">{{ release.summary }}</p>
+    {% else %}
+      <p class="package-description__summary">No project description provided</p>
+    {% endif %}
+    {% csi request.route_path("includes.edit-project-button", project_name=project.normalized_name) %}
+    {% endcsi %}
+    </div>
+  </div>
+</section>
+
+<section data-controller="project-tabs">
+  <div class="tabs-container">
+    <div class="vertical-tabs">
+      <div class="vertical-tabs__tabs">
         <div class="sidebar-section">
-          <h3 {{ l20n("projectNavigation") }}>Navigation</h3>
-            <a class="-js-vertical-tab vertical-tab is-active" rel="tab1" {{ l20n("projectDescription") }}>Project Description</a>
-            <a class="-js-vertical-tab vertical-tab" rel="tab2" {{ l20n("projectDependencies") }}>Dependencies</a>
-            <a class="-js-vertical-tab vertical-tab" rel="tab3" {{ l20n("projectHistory") }}>Version History &amp; Changelog</a>
-            <a class="-js-vertical-tab vertical-tab" rel="tab4" {{ l20n("projectDownloadStats") }}>Download Statistics</a>
-            <a class="-js-vertical-tab vertical-tab" rel="tab5" {{ l20n("projectFiles") }}>Files</a>
+          <h3 class="sidebar-section__title">Navigation</h3>
+            <nav role="tablist">
+              <a id="description-tab" data-target="project-tabs.tab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon vertical-tabs__tab--is-active" href="#description" role="tab">
+                <i class="fa fa-align-left" aria-hidden="true"></i>
+                Project description
+              </a>
+              <a id="history-tab" data-target="project-tabs.tab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon" href="#history" role="tab">
+                <i class="fa fa-history" aria-hidden="true"></i>
+                Release history
+              </a>
+              {% if files %}
+                <a id="files-tab" data-target="project-tabs.tab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon" href="#files" role="tab">
+                  <i class="fa fa-download" aria-hidden="true"></i>
+                  Download files
+                </a>
+              {% endif %}
+            </nav>
         </div>
+        {% include "warehouse:templates/includes/packaging/project-data.html" %}
 
-        <div class="sidebar-section maintainers">
-          <h3 {{ l20n("projectMaintainers") }}>Maintainers</h3>
-          {% for maintainer in maintainers %}
-            <a href="{{ request.route_path('accounts.profile', username=maintainer.username) }}"><img src="{{ gravatar(maintainer.email, size=50) }}" height="50" width="50" alt="{{ maintainer.username}}"></a>
-          {% endfor %}
-        </div>
-
-        {% if release.has_meta %}
-        <div class="sidebar-section meta">
-          <h3 {{ l20n("projectMeta") }}>Meta</h3>
-          {% if release.keywords %}
-          <p class="tags"><i class="fa fa-tags"></i> {{ release.keywords }}</p>
-          {% endif %}
-        </div>
-        {% endif %}
       </div>
+      <div class="vertical-tabs__panel">
+        <!-- mobile menu -->
+        <nav>
+          <a id="mobile-description-tab" data-target="project-tabs.mobileTab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon vertical-tabs__tab--mobile vertical-tabs__tab--no-top-border vertical-tabs__tab--is-active" href="#description">
+            <i class="fa fa-align-left" aria-hidden="true"></i>
+            Project description
+          </a>
+          <a id="mobile-data-tab" data-target="project-tabs.mobileTab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon vertical-tabs__tab--mobile" href="#data">
+            <i class="fa fa-info-circle" aria-hidden="true"></i>
+            Project details
+          </a>
+          <a id="mobile-history-tab" data-target="project-tabs.mobileTab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon vertical-tabs__tab--mobile" href="#history">
+            <i class="fa fa-history" aria-hidden="true"></i>
+            Release history
+          </a>
+          {% if files %}
+          <a id="mobile-files-tab" data-target="project-tabs.mobileTab" data-action="project-tabs#onTabClick" class="vertical-tabs__tab vertical-tabs__tab--with-icon vertical-tabs__tab--mobile" href="#files">
+            <i class="fa fa-download" aria-hidden="true"></i>
+            Download files
+          </a>
+          {% endif %}
+        </nav>
 
-      <div class="vertical-tab-content-container">
-        {# Tab: Project Description #}
-        <a class="-js-vertical-tab-accordion-heading vertical-tab-accordion-heading is-active" rel="tab1" {{ l20n("projectDescription") }}>Project Description</a>
-        <div id="tab1" class="js-vertical-tab-content vertical-tab-content">
-          {% if release.description %}
-          <div class="release-description">
-            {{ release.description|readme(format="rst") }}
+        {# Tab: Project description #}
+        <div id="description" data-target="project-tabs.content" class="vertical-tabs__content" role="tabpanel" aria-labelledby="description-tab mobile-description-tab">
+          <h2 class="page-title">Project description</h2>
+          {% if description %}
+          <div class="project-description">
+            {{ description|camoify|safe }}
           </div>
           {% else %}
           <div class="callout-block">
-            <p>The author of this package has not provided a project description.</p>
+            <p>The author of this package has not provided a project description</p>
           </div>
           {% endif %}
         </div>
 
-        {# Tab: Dependencies #}
-        <a class="-js-vertical-tab-accordion-heading vertical-tab-accordion-heading" rel="tab2" {{ l20n("projectDependencies") }}>Dependencies</a>
-        <div id="tab2" class="js-vertical-tab-content vertical-tab-content">
-          <h2 {{ l20n("numberProjectDependencies", number="TODO") }}>Dependencies (TODO)</h2>
-          <p {{ l20n("projectDependenciesInfo", name=release.project.name) }}>
-            To run <em>{{ release.project.name }}</em>, you will need to have the following projects installed:
-          </p>
-
-          <div class="package-list">
-            {% for _ in [1, 2] %}
-              {{ project_snippet(release) }}
-            {% endfor %}
-          </div>
-
-          <h2 {{ l20n("numberProjectReverseDependencies", number="TODO") }}>Reverse Dependencies (TODO)</h2>
-          <p {{ l20n("projectReverseDependenciesInfo", name=release.project.name) }}>
-            The following projects rely on <em>{{ release.project.name }}</em>:
-          </p>
-
-          <div class="package-list">
-            {% for _ in [1, 2, 3] %}
-              {{ project_snippet(release) }}
-            {% endfor %}
-          </div>
+        {# Tab: project details #}
+        <div id="data" data-target="project-tabs.content" class="vertical-tabs__content" role="tabpanel" aria-labelledby="mobile-data-tab">
+          <h2 class="page-title">Project details</h2>
+          {% include "warehouse:templates/includes/packaging/project-data.html" %}
+          <br>
         </div>
 
-        {# Tab: Version History & Changelog #}
-        <a class="-js-vertical-tab-accordion-heading vertical-tab-accordion-heading" rel="tab3" {{ l20n("projectHistory") }}>Version History &amp; Changelog</a>
-        <div id="tab3" class="js-vertical-tab-content vertical-tab-content">
-          <div class="split-layout -table">
-            <h2 {{ l20n("projectHistory") }}>Version History &amp; Changelog</h2>
-            <div>
-              <a class="wh-button -js-toggle" {{ l20n("expandAll") }} href="#">Expand All</a>
-            </div>
-          </div>
+        {# Tab: Release history #}
+        <div id="history" data-target="project-tabs.content" class="vertical-tabs__content" role="tabpanel" aria-labelledby="history-tab mobile-history-tab">
+          <h2 class="page-title split-layout">
+            <span>Release history</span>
+            <a class="reset-text margin-top" href="{{ request.route_path('help')}}#project-release-notifications">Release notifications</a>
+          </h2>
 
-          <section class="version-history-graphic">
-            {% for hrelease in all_releases %}
-            {% set is_current = (hrelease.version == release.version) %}
-            <div class="history-section{{ ' latest' if loop.first else ' oldest' if loop.last }}{{ ' current' if is_current }}">
-              <div class="version">
+          <section class="release-timeline">
+            {% set blue_cube = request.static_url('warehouse:static/dist/images/blue-cube.svg') %}
+            {% set white_cube = request.static_url('warehouse:static/dist/images/white-cube.svg') %}
+            {% for hversion in all_versions %}
+            {% set is_current = (hversion.version == release.version) %}
+            <div class="release{{ ' release--latest' if loop.first else ' release--oldest' if loop.last }}{{ ' release--current' if is_current }}">
+              <div class="release__meta">
                 {% if is_current %}
-                <p>{{ hrelease.version }}</p>
-                <span class="highlight-badge" {{ l20n("thisVersion") }}>This version</span>
-                {% else %}
-                <p><a href="{{ request.route_path('packaging.release', name=release.project.name, version=hrelease.version) }}">{{ hrelease.version }}</a></p>
+                <span class="badge">This version</span>
                 {% endif %}
               </div>
 
-              <div class="graphic">
+              <div class="release__graphic">
                 {% if loop.length > 1 %}
-                <div class="line"></div>
+                <div class="release__line"></div>
                 {% endif %}
                 {% if is_current %}
-                <img class="history-node" {{ l20n("historyNode") }} alt="History Node" src="{{ request.static_url('warehouse:static/dist/images/white-cube-small.png') }}">
+                <img class="release__node" alt="History Node" src="{{ blue_cube }}">
                 {% else %}
-                <img class="history-node" {{ l20n("historyNode") }} alt="History Node" src="{{ request.static_url('warehouse:static/dist/images/blue-cube-small.png') }}">
+                <img class="release__node" alt="History Node" src="{{ white_cube }}">
                 {% endif %}
               </div>
 
-              <div class="changelog">
-                <div class="card">
-                  <p>TODO: Figure out how to actually get changelog content.
-                  <p>Changelog content for this version goes here.</p>
-                  <p>Donec et mollis dolor. Praesent et diam eget libero egestas mattis sit amet vitae augue. Nam tincidunt congue enim, ut porta lorem lacinia consectetur. Donec ut libero sed arcu vehicula ultricies a non tortor. Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-                  <p><a href="clicking-here-expands-changelog"><i class="fa fa-plus-square-o"></i> <span {{ l20n("showMore") }}>Show More</span></a></p>
-                </div>
-              </div>
+              <a class="card release__card" href="{{ request.route_path('packaging.release', name=release.project.name, version=hversion.version) }}">
+                <p class="release__version">
+                  {{ hversion.version }} {% if hversion.is_prerelease %}<span class="badge badge--warning release__version-badge">pre-release</span>{% endif %}
+                </p>
+                <p class="release__version-date">
+                  {{ localize(hversion.created) }}
+                </p>
+              </a>
             </div>
             {% endfor %}
           </section>
         </div>
 
-        {# Tab: Statistics #}
-        <a class="-js-vertical-tab-accordion-heading vertical-tab-accordion-heading" rel="tab4" {{ l20n("projectDownloadStats") }}>Download Statistics</a>
-        <div id="tab4" class="js-vertical-tab-content vertical-tab-content">
-          <h2 {{ l20n("projectDownloadStats") }}>Download Statistics</h2>
-          <div class="button-set">
-            <a class="wh-button -highlight" href="#" {{ l20n("allVersions") }}>All versions</a>
-            <a class="wh-button" href="#" {{ l20n("thisVersionOnly", version=release.version) }}>This version only ({{ release.version }})</a>
+        {% if files %}
+          {# Tab: Downloads #}
+          <div id="files" data-target="project-tabs.content" class="vertical-tabs__content" role="tabpanel" aria-labelledby="files-tab mobile-files-tab">
+            <h2 class="page-title">Download files</h2>
+            <p>Download the file for your platform. If you're not sure which to choose, learn more about <a href="https://packaging.python.org/installing/">installing packages</a>.</p>
+
+            <table class="table table--downloads">
+              <thead>
+                <tr>
+                  <th class="table__filename">
+                    Filename, size &amp; hash
+                    <a href="https://pip.pypa.io/en/stable/reference/pip_install/#hash-checking-mode" class="tooltipped tooltipped-n" aria-label="what's this?" data-original-label="what's this?">
+                      <i class="fa fa-question-circle" aria-hidden="true"></i>
+                      <span class="sr-only">SHA256 hash help</span>
+                    </a>
+                  </th>
+                  <th class="table__type">File type</th>
+                  <th class="table__version">Python version</th>
+                  <th class="table__upload-date">Upload date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for file in files %}
+                <tr>
+                  <td>
+                    <a href="{{ request.route_url('packaging.file', path=file.path) }}">
+                      {{ file.filename }}
+                    </a>
+                    {% if file.size %} ({{ file.size|filesizeformat() }}){% endif %}
+                    <a class="-js-copy-hash table__sha256-link tooltipped tooltipped-s" aria-label="Copy to clipboard" data-original-label="Copy to clipboard" data-clipboard-text="{{ file.sha256_digest }}">
+                      <i class="fa fa-copy" aria-hidden="true"></i>
+                      <span class="sr-only">Copy SHA256 hash</span>
+                      SHA256
+                    </a>
+                  </td>
+                  <td>
+                    {{ file.packagetype|format_package_type }}
+                  </td>
+                  <td>
+                    {% if file.python_version != "source" %}
+                      {{ file.python_version }}
+                    {% else %}
+                      None
+                    {% endif %}
+                  </td>
+                  <td>{{ localize(file.upload_time) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-
-          <div class="download-graph">
-            <div class="download-overview">
-              <p><strong>TODO:</strong> All of these numbers</p>
-              <p><strong>Today:</strong> 34</p>
-              <p><strong>This Week:</strong> 54</p>
-              <p><strong>This Month: </strong> 5,434</p>
-              <p><strong>This Year: </strong> 46,339</p>
-              <p><strong>All Time:</strong> 2,342,323</p>
-            </div>
-            <p>TODO: Bar chart here showing downloads over time</p>
-          </div>
-        </div>
-
-        {# Tab: Files #}
-        <a class="-js-vertical-tab-accordion-heading vertical-tab-accordion-heading" rel="tab5" {{ l20n("projectFiles") }}>Files</a>
-        <div id="tab5" class="js-vertical-tab-content vertical-tab-content">
-          <h2 {{ l20n("projectFilesTitle") }}>Release Files</h2>
-          <p>TODO: Brief introduction on what you do with files - including link to relevant help section.</p>
-
-          <table class="downloads-table">
-            <thead>
-              <tr>
-                <th class="filename" {{ l20n("fileName") }}>File Name</th>
-                <th class="checksum">
-                  <span {{ l20n("sha256Checksum") }}>SHA256 Checksum</span>&nbsp;
-                  <a href="TODO">
-                    <i class="fa fa-question-circle"></i>
-                    <span class="sr-only">SHA256 Checksum Help</span>
-                  </a>
-                </th>
-                <th class="type" {{ l20n("fileType") }}>File Type</th>
-                <th class="upload-date" {{ l20n("uploadDate") }}>Upload Date</th>
-                <th class="version" {{ l20n("version") }}>Version</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for file in files %}
-              <tr>
-                <td><a href="{{ request.route_path('packaging.file', path=file.path) }}">{{ file.filename }}</a>{% if file.size %} ({{ file.size|filesizeformat() }}){% endif %}</td>
-                <td>
-                  {{ file.sha256_digest }}
-                  <a class="sha256-link" href="clicking-here-copies-sha256">
-                    <i class="fa fa-copy"></i>
-                    <span class="sr-only">Copy SHA256 Checksum</span>
-                  </a>
-                </td>
-                <td>
-                  {# TODO: This should ideally be part of an enum somewhere or
-                     otherwise defined somewhere other than a big if else
-                     chain inside of a template
-                  #}
-                  {% if file.packagetype == "bdist_dmg" %}
-                    OSX Disk Image
-                  {% elif file.packagetype == "bdist_dumb" %}
-                    "Dumb" Binary
-                  {% elif file.packagetype == "bdist_egg" %}
-                    Egg
-                  {% elif file.packagetype == "bdist_msi" %}
-                    Windows MSI Installer
-                  {% elif file.packagetype == "bdist_rpm" %}
-                    RPM
-                  {% elif file.packagetype == "bdist_wheel" %}
-                    Wheel
-                  {% elif file.packagetype == "bdist_wininst" %}
-                    Windows Installer
-                  {% elif file.packagetype == "sdist" %}
-                    Source
-                  {% else %}
-                    {{ file.packagetype }}
-                  {% endif %}
-                </td>
-                <td>{{ file.upload_time|format_date() }}</td>
-                <td>
-                  {% if file.python_version != "source" %}
-                    {{ file.python_version }}
-                  {% else %}
-                    –
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+        {% endif %}
       </div>
     </div>
   </div>

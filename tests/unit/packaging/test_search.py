@@ -10,23 +10,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
+
 import pretend
 
-from warehouse.packaging import search
+from warehouse.packaging.search import Project
 
 
 def test_build_search():
     release = pretend.stub(
-        project=pretend.stub(
-            name="Foobar",
-            normalized_name="foobar",
-            releases=[
-                pretend.stub(version="1.0"),
-                pretend.stub(version="2.0"),
-                pretend.stub(version="3.0"),
-                pretend.stub(version="4.0"),
-            ],
-        ),
+        name="Foobar",
+        normalized_name="foobar",
+        all_versions=["5.0.dev0", "4.0", "3.0", "2.0", "1.0"],
+        latest_version="4.0",
         summary="This is my summary",
         description="This is my description",
         author="Jane Author",
@@ -37,16 +33,16 @@ def test_build_search():
         download_url="https://example.com/foobar/downloads/",
         keywords="the, keywords, lol",
         platform="any platform",
-        uploader=pretend.stub(
-            username="some-username",
-            name="the-users-name",
-        ),
+        created=datetime.datetime(1956, 1, 31),
+        classifiers=["Alpha", "Beta"],
+        zscore=None,
     )
-    obj = search.Project.from_db(release)
+    obj = Project.from_db(release)
 
     assert obj.meta.id == "foobar"
     assert obj["name"] == "Foobar"
-    assert obj["version"] == ["1.0", "2.0", "3.0", "4.0"]
+    assert obj["version"] == ["5.0.dev0", "4.0", "3.0", "2.0", "1.0"]
+    assert obj["latest_version"] == "4.0"
     assert obj["summary"] == "This is my summary"
     assert obj["description"] == "This is my description"
     assert obj["author"] == "Jane Author"
@@ -57,5 +53,6 @@ def test_build_search():
     assert obj["download_url"] == "https://example.com/foobar/downloads/"
     assert obj["keywords"] == "the, keywords, lol"
     assert obj["platform"] == "any platform"
-    assert obj["uploader_name"] == "the-users-name"
-    assert obj["uploader_username"] == "some-username"
+    assert obj["created"] == datetime.datetime(1956, 1, 31)
+    assert obj["classifiers"] == ["Alpha", "Beta"]
+    assert obj["zscore"] is None

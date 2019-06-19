@@ -10,10 +10,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from elasticsearch_dsl import DocType, String, analyzer, MetaField
+import packaging.version
 
-from warehouse.search import doc_type
+from elasticsearch_dsl import Date, Document, Float, Keyword, Text, analyzer
 
+from warehouse.search.utils import doc_type
 
 EmailAnalyzer = analyzer(
     "email",
@@ -21,38 +22,44 @@ EmailAnalyzer = analyzer(
     filter=["standard", "lowercase", "stop", "snowball"],
 )
 
+NameAnalyzer = analyzer(
+    "normalized_name",
+    tokenizer="lowercase",
+    filter=["standard", "lowercase", "word_delimiter"],
+)
+
 
 @doc_type
-class Project(DocType):
+class Project(Document):
 
-    name = String()
-    normalized_name = String(index="not_analyzed")
-    version = String(index="not_analyzed", multi=True)
-    summary = String(analyzer="snowball")
-    description = String(analyzer="snowball")
-    author = String()
-    author_email = String(analyzer=EmailAnalyzer)
-    maintainer = String()
-    maintainer_email = String(analyzer=EmailAnalyzer)
-    license = String()
-    home_page = String(index="not_analyzed")
-    download_url = String(index="not_analyzed")
-    keywords = String(analyzer="snowball")
-    platform = String(index="not_analyzed")
-
-    uploader_name = String()
-    uploader_username = String()
-
-    class Meta:
-        # disable the _all field to save some space
-        all = MetaField(enabled=False)
+    name = Text()
+    normalized_name = Text(analyzer=NameAnalyzer)
+    version = Keyword(multi=True)
+    latest_version = Keyword()
+    summary = Text(analyzer="snowball")
+    description = Text(analyzer="snowball")
+    author = Text()
+    author_email = Text(analyzer=EmailAnalyzer)
+    maintainer = Text()
+    maintainer_email = Text(analyzer=EmailAnalyzer)
+    license = Text()
+    home_page = Keyword()
+    download_url = Keyword()
+    keywords = Text(analyzer="snowball")
+    platform = Keyword()
+    created = Date()
+    classifiers = Keyword(multi=True)
+    zscore = Float()
 
     @classmethod
     def from_db(cls, release):
-        obj = cls(meta={"id": release.project.normalized_name})
-        obj["name"] = release.project.name
-        obj["normalized_name"] = release.project.normalized_name
-        obj["version"] = [r.version for r in release.project.releases]
+        obj = cls(meta={"id": release.normalized_name})
+        obj["name"] = release.name
+        obj["normalized_name"] = release.normalized_name
+        obj["version"] = sorted(
+            release.all_versions, key=lambda r: packaging.version.parse(r), reverse=True
+        )
+        obj["latest_version"] = release.latest_version
         obj["summary"] = release.summary
         obj["description"] = release.description
         obj["author"] = release.author
@@ -63,8 +70,13 @@ class Project(DocType):
         obj["download_url"] = release.download_url
         obj["keywords"] = release.keywords
         obj["platform"] = release.platform
-
-        obj["uploader_name"] = release.uploader.name
-        obj["uploader_username"] = release.uploader.username
+        obj["created"] = release.created
+        obj["classifiers"] = release.classifiers
+        obj["zscore"] = release.zscore
 
         return obj
+
+    class Index:
+        # make sure this class can match any index so it will always be used to
+        # deserialize data coming from elasticsearch.
+        name = "*"

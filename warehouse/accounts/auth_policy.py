@@ -20,7 +20,6 @@ from warehouse.cache.http import add_vary_callback
 
 
 class BasicAuthAuthenticationPolicy(_BasicAuthAuthenticationPolicy):
-
     def unauthenticated_userid(self, request):
         # If we're calling into this API on a request, then we want to register
         # a callback which will ensure that the response varies based on the
@@ -34,11 +33,10 @@ class BasicAuthAuthenticationPolicy(_BasicAuthAuthenticationPolicy):
         # want to locate the userid from the IUserService.
         if username is not None:
             login_service = request.find_service(IUserService, context=None)
-            return login_service.find_userid(username)
+            return str(login_service.find_userid(username))
 
 
 class SessionAuthenticationPolicy(_SessionAuthenticationPolicy):
-
     def unauthenticated_userid(self, request):
         # If we're calling into this API on a request, then we want to register
         # a callback which will ensure that the response varies based on the

@@ -1,58 +1,39 @@
 Warehouse
 =========
 
-.. image:: https://readthedocs.org/projects/warehouse/badge/?version=latest
-    :target: https://warehouse.readthedocs.org/
-    :alt: Latest Docs
-
-.. image:: https://travis-ci.org/pypa/warehouse.svg?branch=master
-    :target: https://travis-ci.org/pypa/warehouse
-
-.. image:: http://codecov.io/github/pypa/warehouse/coverage.svg?branch=master
-    :target: http://codecov.io/github/pypa/warehouse?branch=master
-
-.. image:: https://requires.io/github/pypa/warehouse/requirements.svg?branch=master
-     :target: https://requires.io/github/pypa/warehouse/requirements/?branch=master
-     :alt: Requirements Status
-
-Warehouse is a next generation Python Package Repository designed to replace
-the legacy code base that currently powers `PyPI <https://pypi.python.org/>`_.
-
-You can find more information in the `documentation`_.
+Warehouse is the software that powers `PyPI`_.
+See `our development roadmap`_, `documentation`_, and
+`architectural overview`_.
 
 Getting Started
 ---------------
 
-Running a copy of Warehouse locally requires using ``docker`` and
-``docker-compose``. Assuming you have those two items, here are a number of
-commands you can use:
+You can run Warehouse locally in a development environment using
+``docker`` and ``docker-compose``. See `Getting started`_
+documentation for instructions on how to set it up.
 
-.. code-block:: console
-
-    $ # Start up a local environment
-    $ make serve
-    $ # Initialize the database and fill it with test data
-    $ make initdb
-    $ # Run the tests
-    $ make tests
-    $ # Build the documentation
-    $ make docs
-    $ # Run the various linters
-    $ make lint
-
+The canonical deployment of Warehouse is in production at `pypi.org`_.
 
 Discussion
 ----------
 
 If you run into bugs, you can file them in our `issue tracker`_.
 
-You can also join ``#pypa`` or ``#pypa-dev`` on Freenode to ask questions or
-get involved.
+You can also join the chat channels ``#pypa`` (general packaging
+discussion and user support) and ``#pypa-dev`` (discussion about
+development of packaging tools) `on Freenode`_, or the `pypa-dev
+mailing list`_, to ask questions or get involved.
 
+Testing
+----------
 
-.. _`documentation`: https://warehouse.readthedocs.org/
-.. _`issue tracker`: https://github.com/pypa/warehouse/issues
+Read the `running tests and linters section`_ of our documentation to
+learn how to test your code.  For cross-browser testing, we use an
+open source account from `BrowserStack`_. If your pull request makes
+any change to the user interface, it will need to be tested to confirm
+it works in our `supported browsers`_.
 
+|BrowserStackImg|_
 
 Code of Conduct
 ---------------
@@ -60,4 +41,18 @@ Code of Conduct
 Everyone interacting in the Warehouse project's codebases, issue trackers, chat
 rooms, and mailing lists is expected to follow the `PyPA Code of Conduct`_.
 
-.. _PyPA Code of Conduct: https://www.pypa.io/en/latest/code-of-conduct/
+.. _`PyPI`: https://pypi.org/
+.. _`our development roadmap`: https://warehouse.readthedocs.io/roadmap/
+.. _`architectural overview`: https://warehouse.readthedocs.io/application/
+.. _`documentation`: https://warehouse.readthedocs.io
+.. _`Getting started`: https://warehouse.readthedocs.io/development/getting-started/
+.. _`issue tracker`: https://github.com/pypa/warehouse/issues
+.. _`pypi.org`: https://pypi.org/
+.. _`on Freenode`: https://webchat.freenode.net/?channels=%23pypa-dev,pypa
+.. _`pypa-dev mailing list`: https://groups.google.com/forum/#!forum/pypa-dev
+.. _`Running tests and linters section`: https://warehouse.readthedocs.io/development/getting-started/#running-tests-and-linters
+.. _BrowserStack: https://browserstack.com/
+.. _`supported browsers`: https://warehouse.readthedocs.io/development/frontend/#browser-support
+.. |BrowserStackImg| image:: docs/_static/browserstack-logo.png
+.. _BrowserStackImg: https://browserstack.com/
+.. _`PyPA Code of Conduct`: https://www.pypa.io/en/latest/code-of-conduct/

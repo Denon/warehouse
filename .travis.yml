@@ -1,15 +1,22 @@
 language: python
-python: 3.5.1
+python: 3.7.3
 
 env:
   global:
-    - TRAVIS_NODE_VERSION=5.5.0
+    - TRAVIS_NODE_VERSION=8.9.4
 
-dist: trusty
-sudo: false
+dist: xenial
 
 addons:
-  postgresql: "9.4"
+  hosts:
+    - warehouse.local
+  postgresql: 10
+  apt:
+    packages:
+    - postgresql-10
+    - postgresql-client-10
+    - nasm
+    - libgnutls28-dev
 
 services:
   - postgresql
@@ -21,26 +28,28 @@ cache:
 
 install:
   - 'rm -rf ~/.nvm && git clone https://github.com/creationix/nvm.git ~/.nvm && (cd ~/.nvm && git checkout `git describe --abbrev=0 --tags`) && source ~/.nvm/nvm.sh && nvm install $TRAVIS_NODE_VERSION'
-  - pip install -U pip setuptools wheel codecov
-  - pip install -r requirements/docs.txt -r requirements/lint.txt -r requirements/main.txt -r requirements/tests.txt
+  - pip install -U pip setuptools wheel
+  - pip install -r requirements/main.txt -r requirements/deploy.txt -r requirements/docs.txt -r requirements/lint.txt -r requirements/tests.txt
   - npm install
 
 script:
   - node -v
   - npm -v
-  - gulp dist
-  - bin/tests --dbfixtures-config tests/dbfixtures.travis.conf
+  - bin/tests --postgresql-host 127.0.0.1
 
 matrix:
   include:
+    - env:
+      - SUITE=Tests
     - script: make lint BINDIR="$(dirname $(which python))"
+      env:
+        - SUITE=Lint
     - script: make docs BINDIR="$(dirname $(which python))"
-
-after_success: codecov
-
-notifications:
-  irc:
-    channels:
-      - "irc.freenode.org#pypa-dev"
-    use_notice: true
-    skip_join: true
+      env:
+        - SUITE=Documentation
+    - script: make travis-deps BINDIR="$(dirname $(which python))"
+      env:
+        - SUITE=Dependencies
+    - script: make licenses BINDIR="$(dirname $(which python))"
+      env:
+        - SUITE=Licenses

@@ -10,8 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from sqlalchemy import BigInteger, Column, Text
-from sqlalchemy import sql
+from sqlalchemy import BigInteger, Column, Text, sql
 
 from warehouse import db
 
@@ -21,8 +20,4 @@ class RowCount(db.Model):
     __tablename__ = "row_counts"
 
     table_name = Column(Text, nullable=False, unique=True)
-    count = Column(
-        BigInteger,
-        nullable=False,
-        server_default=sql.text("0"),
-    )
+    count = Column(BigInteger, nullable=False, server_default=sql.text("0"))

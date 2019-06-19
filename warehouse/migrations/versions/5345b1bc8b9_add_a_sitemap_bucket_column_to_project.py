@@ -17,9 +17,9 @@ Revises: 4ec0adada10
 Create Date: 2015-09-06 19:56:58.188767
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "5345b1bc8b9"
 down_revision = "4ec0adada10"
@@ -28,10 +28,7 @@ down_revision = "4ec0adada10"
 def upgrade():
     # We need to add the column as nullable at first, because we need to
     # backfill our data.
-    op.add_column(
-        "packages",
-        sa.Column("sitemap_bucket", sa.Text(), nullable=True),
-    )
+    op.add_column("packages", sa.Column("sitemap_bucket", sa.Text(), nullable=True))
 
     op.execute(
         """

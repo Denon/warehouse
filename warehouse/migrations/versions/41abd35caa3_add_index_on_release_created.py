@@ -17,9 +17,9 @@ Revises: 3af8d0006ba
 Create Date: 2015-08-24 23:16:07.674157
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "41abd35caa3"
 down_revision = "3af8d0006ba"
@@ -27,10 +27,7 @@ down_revision = "3af8d0006ba"
 
 def upgrade():
     op.create_index(
-        "release_created_idx",
-        "releases",
-        [sa.text("created DESC")],
-        unique=False,
+        "release_created_idx", "releases", [sa.text("created DESC")], unique=False
     )
 
 

@@ -17,10 +17,10 @@ from pyramid.view import view_config
 from sqlalchemy import func
 
 from warehouse.accounts.models import User
-from warehouse.cache.origin import origin_cache
 from warehouse.cache.http import cache_control
+from warehouse.cache.origin import origin_cache
 from warehouse.packaging.models import Project
-
+from warehouse.xml import XML_CSP
 
 SITEMAP_MAXSIZE = 50000
 
@@ -32,17 +32,19 @@ Bucket = collections.namedtuple("Bucket", ["name", "modified"])
     route_name="index.sitemap.xml",
     renderer="sitemap/index.xml",
     decorator=[
-        cache_control(1 * 60 * 60),              # 1 hour
+        cache_control(1 * 60 * 60),  # 1 hour
         origin_cache(
-            1 * 24 * 60 * 60,                    # 1 day
+            1 * 24 * 60 * 60,  # 1 day
             stale_while_revalidate=6 * 60 * 60,  # 6 hours
-            stale_if_error=1 * 24 * 60 * 60,     # 1 day
+            stale_if_error=1 * 24 * 60 * 60,  # 1 day
             keys=["all-projects"],
         ),
     ],
 )
 def sitemap_index(request):
     request.response.content_type = "text/xml"
+
+    request.find_service(name="csp").merge(XML_CSP)
 
     # We have > 50,000 URLs on PyPI and a single sitemap file can only support
     # a maximum of 50,000 URLs. We need to split our URLs up into multiple
@@ -60,22 +62,23 @@ def sitemap_index(request):
     # property of the URL what bucket an URL goes into won't be influenced by
     # what other URLs exist in the system.
     projects = (
-        request.db.query(Project.sitemap_bucket,
-                         func.max(Project.created).label("modified"))
-                  .group_by(Project.sitemap_bucket)
-                  .all()
+        request.db.query(
+            Project.sitemap_bucket, func.max(Project.created).label("modified")
+        )
+        .group_by(Project.sitemap_bucket)
+        .all()
     )
     users = (
-        request.db.query(User.sitemap_bucket,
-                         func.max(User.date_joined).label("modified"))
-                  .group_by(User.sitemap_bucket)
-                  .all()
+        request.db.query(
+            User.sitemap_bucket, func.max(User.date_joined).label("modified")
+        )
+        .group_by(User.sitemap_bucket)
+        .all()
     )
     buckets = {}
     for b in itertools.chain(projects, users):
         current = buckets.setdefault(b.sitemap_bucket, b.modified)
-        if (current is None or
-                (b.modified is not None and b.modified > current)):
+        if current is None or (b.modified is not None and b.modified > current):
             buckets[b.sitemap_bucket] = b.modified
     buckets = [Bucket(name=k, modified=v) for k, v in buckets.items()]
     buckets.sort(key=lambda x: x.name)
@@ -87,11 +90,11 @@ def sitemap_index(request):
     route_name="bucket.sitemap.xml",
     renderer="sitemap/bucket.xml",
     decorator=[
-        cache_control(1 * 60 * 60),              # 1 hour
+        cache_control(1 * 60 * 60),  # 1 hour
         origin_cache(
-            1 * 24 * 60 * 60,                    # 1 day
+            1 * 24 * 60 * 60,  # 1 day
             stale_while_revalidate=6 * 60 * 60,  # 6 hours
-            stale_if_error=1 * 24 * 60 * 60,     # 1 day
+            stale_if_error=1 * 24 * 60 * 60,  # 1 day
             keys=["all-projects"],
         ),
     ],
@@ -99,26 +102,23 @@ def sitemap_index(request):
 def sitemap_bucket(request):
     request.response.content_type = "text/xml"
 
+    request.find_service(name="csp").merge(XML_CSP)
+
     bucket = request.matchdict["bucket"]
 
     projects = (
         request.db.query(Project.normalized_name)
-                  .filter(Project.sitemap_bucket == bucket)
-                  .all()
+        .filter(Project.sitemap_bucket == bucket)
+        .all()
     )
-    users = (
-        request.db.query(User.username)
-                  .filter(User.sitemap_bucket == bucket)
-                  .all()
-    )
+    users = request.db.query(User.username).filter(User.sitemap_bucket == bucket).all()
 
     urls = [
         request.route_url("packaging.project", name=project.normalized_name)
         for project in projects
     ]
     urls += [
-        request.route_url("accounts.profile", username=user.username)
-        for user in users
+        request.route_url("accounts.profile", username=user.username) for user in users
     ]
 
     # If the length of our bucket name isn't enough to ensure that all of our
@@ -128,8 +128,8 @@ def sitemap_bucket(request):
     if len(urls) > SITEMAP_MAXSIZE:
         raise ValueError(
             "Too many URLs in the sitemap for bucket: {!r}.".format(
-                request.matchdict["bucket"],
-            ),
+                request.matchdict["bucket"]
+            )
         )
 
     return {"urls": sorted(urls)}

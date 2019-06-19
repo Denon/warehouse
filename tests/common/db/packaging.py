@@ -12,13 +12,24 @@
 
 import datetime
 import hashlib
+import uuid
 
 import factory
 import factory.fuzzy
+import packaging.utils
 
 from warehouse.packaging.models import (
-    Project, Release, Role, File, JournalEntry,
+    BlacklistedProject,
+    Dependency,
+    DependencyKind,
+    Description,
+    File,
+    JournalEntry,
+    Project,
+    Release,
+    Role,
 )
+from warehouse.utils import readme
 
 from .accounts import UserFactory
 from .base import WarehouseFactory
@@ -28,26 +39,40 @@ class ProjectFactory(WarehouseFactory):
     class Meta:
         model = Project
 
+    id = factory.LazyFunction(uuid.uuid4)
     name = factory.fuzzy.FuzzyText(length=12)
+
+
+class DescriptionFactory(WarehouseFactory):
+    class Meta:
+        model = Description
+
+    id = factory.LazyFunction(uuid.uuid4)
+    raw = factory.fuzzy.FuzzyText(length=100)
+    html = factory.LazyAttribute(lambda o: readme.render(o.raw))
+    rendered_by = factory.LazyAttribute(lambda o: readme.renderer_version())
 
 
 class ReleaseFactory(WarehouseFactory):
     class Meta:
         model = Release
 
-    name = factory.LazyAttribute(lambda o: o.project.name)
+    id = factory.LazyFunction(uuid.uuid4)
     project = factory.SubFactory(ProjectFactory)
     version = factory.Sequence(lambda n: str(n) + ".0")
+    canonical_version = factory.LazyAttribute(
+        lambda o: packaging.utils.canonicalize_version(o.version)
+    )
     _pypi_ordering = factory.Sequence(lambda n: n)
 
     uploader = factory.SubFactory(UserFactory)
+    description = factory.SubFactory(DescriptionFactory)
 
 
 class FileFactory(WarehouseFactory):
     class Meta:
         model = File
 
-    name = factory.LazyAttribute(lambda o: o.release.name)
     release = factory.SubFactory(ReleaseFactory)
     python_version = "source"
     md5_digest = factory.LazyAttribute(
@@ -56,16 +81,19 @@ class FileFactory(WarehouseFactory):
     sha256_digest = factory.LazyAttribute(
         lambda o: hashlib.sha256(o.filename.encode("utf8")).hexdigest()
     )
-    upload_time = factory.fuzzy.FuzzyNaiveDateTime(
-        datetime.datetime(2008, 1, 1)
+    blake2_256_digest = factory.LazyAttribute(
+        lambda o: hashlib.blake2b(o.filename.encode("utf8"), digest_size=32).hexdigest()
     )
+    upload_time = factory.fuzzy.FuzzyNaiveDateTime(datetime.datetime(2008, 1, 1))
     path = factory.LazyAttribute(
-        lambda o: "/".join([
-            o.python_version,
-            o.release.project.name[0],
-            o.release.project.name,
-            o.filename,
-        ])
+        lambda o: "/".join(
+            [
+                o.blake2_256_digest[:2],
+                o.blake2_256_digest[2:4],
+                o.blake2_256_digest[4:],
+                o.filename,
+            ]
+        )
     )
 
 
@@ -78,6 +106,15 @@ class RoleFactory(WarehouseFactory):
     project = factory.SubFactory(ProjectFactory)
 
 
+class DependencyFactory(WarehouseFactory):
+    class Meta:
+        model = Dependency
+
+    release = factory.SubFactory(ReleaseFactory)
+    kind = factory.fuzzy.FuzzyChoice(int(kind) for kind in DependencyKind)
+    specifier = factory.fuzzy.FuzzyText(length=12)
+
+
 class JournalEntryFactory(WarehouseFactory):
     class Meta:
         model = JournalEntry
@@ -85,7 +122,14 @@ class JournalEntryFactory(WarehouseFactory):
     id = factory.Sequence(lambda n: n)
     name = factory.fuzzy.FuzzyText(length=12)
     version = factory.Sequence(lambda n: str(n) + ".0")
-    submitted_date = factory.fuzzy.FuzzyNaiveDateTime(
-        datetime.datetime(2008, 1, 1)
-    )
+    submitted_date = factory.fuzzy.FuzzyNaiveDateTime(datetime.datetime(2008, 1, 1))
     submitted_by = factory.SubFactory(UserFactory)
+
+
+class BlacklistedProjectFactory(WarehouseFactory):
+    class Meta:
+        model = BlacklistedProject
+
+    created = factory.fuzzy.FuzzyNaiveDateTime(datetime.datetime(2008, 1, 1))
+    name = factory.fuzzy.FuzzyText(length=12)
+    blacklisted_by = factory.SubFactory(UserFactory)

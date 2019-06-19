@@ -1,2 +1,5 @@
-web: bin/redis-tls bin/fastly-config && bin/redis-tls gunicorn -b 0.0.0.0:$PORT -n warehouse -k gevent --preload warehouse.wsgi
-worker: bin/redis-tls celery -A warehouse worker -l info
+release: bin/release
+web: bin/start-web python -m gunicorn.app.wsgiapp -c gunicorn.conf warehouse.wsgi:application
+web-uploads: bin/start-web python -m gunicorn.app.wsgiapp -c gunicorn-uploads.conf warehouse.wsgi:application
+worker: bin/start-worker celery -A warehouse worker -l info --max-tasks-per-child 32
+worker-beat: bin/start-worker celery -A warehouse beat -S redbeat.RedBeatScheduler -l info

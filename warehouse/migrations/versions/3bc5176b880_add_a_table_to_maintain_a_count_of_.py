@@ -17,8 +17,9 @@ Revises: 18e4cf2bb3e
 Create Date: 2015-11-15 15:10:38.681814
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "3bc5176b880"
@@ -36,10 +37,7 @@ def upgrade():
         ),
         sa.Column("table_name", sa.Text(), nullable=False, unique=True),
         sa.Column(
-            "count",
-            sa.BigInteger(),
-            server_default=sa.text("0"),
-            nullable=False,
+            "count", sa.BigInteger(), server_default=sa.text("0"), nullable=False
         ),
         sa.PrimaryKeyConstraint("id"),
     )

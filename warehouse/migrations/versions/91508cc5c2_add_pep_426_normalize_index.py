@@ -19,17 +19,18 @@ Create Date: 2015-04-04 23:55:27.024988
 
 from alembic import op
 
-
 revision = "91508cc5c2"
 down_revision = "20f4dbe11e9"
 
 
 def upgrade():
-    op.execute("""
+    op.execute(
+        """
         CREATE UNIQUE INDEX project_name_pep426_normalized
             ON packages
             (normalize_pep426_name(name))
-    """)
+    """
+    )
 
 
 def downgrade():

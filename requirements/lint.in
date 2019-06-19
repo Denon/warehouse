@@ -1,0 +1,6 @@
+doc8
+flake8
+html-linter
+pep8-naming
+black==19.3b0
+isort

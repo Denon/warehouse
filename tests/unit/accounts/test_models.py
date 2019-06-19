@@ -12,21 +12,17 @@
 
 import pytest
 
-from warehouse.accounts.models import User, UserFactory
+from warehouse.accounts.models import Email, User, UserFactory
 
 from ...common.db.accounts import (
-    UserFactory as DBUserFactory, EmailFactory as DBEmailFactory,
+    EmailFactory as DBEmailFactory,
+    UserFactory as DBUserFactory,
 )
 
 
 class TestUserFactory:
-
     @pytest.mark.parametrize(
-        ("username", "normalized"),
-        [
-            ("foo", "foo"),
-            ("Bar", "bar"),
-        ],
+        ("username", "normalized"), [("foo", "foo"), ("Bar", "bar")]
     )
     def test_traversal_finds(self, db_request, username, normalized):
         user = DBUserFactory.create(username=username)
@@ -41,9 +37,28 @@ class TestUserFactory:
         with pytest.raises(KeyError):
             root[user.username + "invalid"]
 
+    @pytest.mark.parametrize(
+        ("email", "verified", "allowed"),
+        [
+            ("foo@bar.com", True, True),
+            (None, False, False),
+            ("foo@bar.com", False, False),
+        ],
+    )
+    def test_two_factor_provisioning_allowed(
+        self, db_session, email, verified, allowed
+    ):
+        user = DBUserFactory.create()
+
+        if email:
+            e = Email(email=email, user=user, primary=True, verified=verified)
+            db_session.add(e)
+            db_session.flush()
+
+        assert user.two_factor_provisioning_allowed == allowed
+
 
 class TestUser:
-
     def test_get_primary_email_when_no_emails(self, db_session):
         user = DBUserFactory.create()
         assert user.email is None
@@ -59,9 +74,7 @@ class TestUser:
         user = DBUserFactory.create()
         email = DBEmailFactory.create(user=user, primary=True)
 
-        result = db_session.query(User).filter(
-            User.email == email.email
-        ).first()
+        result = db_session.query(User).filter(User.email == email.email).first()
 
         assert result == user
 
@@ -69,8 +82,6 @@ class TestUser:
         user = DBUserFactory.create()
         email = DBEmailFactory.create(user=user, primary=False)
 
-        result = db_session.query(User).filter(
-            User.email == email.email
-        ).first()
+        result = db_session.query(User).filter(User.email == email.email).first()
 
         assert result is None

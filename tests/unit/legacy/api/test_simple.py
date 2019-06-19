@@ -18,12 +18,14 @@ from warehouse.legacy.api import simple
 
 from ....common.db.accounts import UserFactory
 from ....common.db.packaging import (
-    ProjectFactory, ReleaseFactory, FileFactory, JournalEntryFactory,
+    FileFactory,
+    JournalEntryFactory,
+    ProjectFactory,
+    ReleaseFactory,
 )
 
 
 class TestSimpleIndex:
-
     def test_no_results_no_serial(self, db_request):
         assert simple.simple_index(db_request) == {"projects": []}
         assert db_request.response.headers["X-PyPI-Last-Serial"] == "0"
@@ -40,7 +42,7 @@ class TestSimpleIndex:
             for x in [ProjectFactory.create() for _ in range(3)]
         ]
         assert simple.simple_index(db_request) == {
-            "projects": sorted(projects, key=lambda x: x[1]),
+            "projects": sorted(projects, key=lambda x: x[1])
         }
         assert db_request.response.headers["X-PyPI-Last-Serial"] == "0"
 
@@ -53,13 +55,12 @@ class TestSimpleIndex:
         je = JournalEntryFactory.create(submitted_by=user)
 
         assert simple.simple_index(db_request) == {
-            "projects": sorted(projects, key=lambda x: x[1]),
+            "projects": sorted(projects, key=lambda x: x[1])
         }
         assert db_request.response.headers["X-PyPI-Last-Serial"] == str(je.id)
 
 
 class TestSimpleDetail:
-
     def test_redirects(self, pyramid_request):
         project = pretend.stub(normalized_name="foo")
 
@@ -72,9 +73,7 @@ class TestSimpleDetail:
 
         assert isinstance(resp, HTTPMovedPermanently)
         assert resp.headers["Location"] == "/foobar/"
-        assert pyramid_request.current_route_path.calls == [
-            pretend.call(name="foo"),
-        ]
+        assert pyramid_request.current_route_path.calls == [pretend.call(name="foo")]
 
     def test_no_files_no_serial(self, db_request):
         project = ProjectFactory.create()
@@ -88,11 +87,15 @@ class TestSimpleDetail:
         }
         assert db_request.response.headers["X-PyPI-Last-Serial"] == "0"
 
-    def test_no_files_with_seiral(self, db_request):
+    def test_no_files_with_serial(self, db_request):
         project = ProjectFactory.create()
         db_request.matchdict["name"] = project.normalized_name
         user = UserFactory.create()
         je = JournalEntryFactory.create(name=project.name, submitted_by=user)
+
+        # Make sure that we get any changes made since the JournalEntry was
+        # saved.
+        db_request.db.refresh(project)
 
         assert simple.simple_detail(project, db_request) == {
             "project": project,
@@ -102,14 +105,10 @@ class TestSimpleDetail:
 
     def test_with_files_no_serial(self, db_request):
         project = ProjectFactory.create()
-        releases = [
-            ReleaseFactory.create(project=project)
-            for _ in range(3)
-        ]
+        releases = [ReleaseFactory.create(project=project) for _ in range(3)]
         files = [
             FileFactory.create(
-                release=r,
-                filename="{}-{}.tar.gz".format(project.name, r.version),
+                release=r, filename="{}-{}.tar.gz".format(project.name, r.version)
             )
             for r in releases
         ]
@@ -119,22 +118,22 @@ class TestSimpleDetail:
         user = UserFactory.create()
         JournalEntryFactory.create(submitted_by=user)
 
+        # Make sure that we get any changes made since the JournalEntry was
+        # saved.
+        db_request.db.refresh(project)
+
         assert simple.simple_detail(project, db_request) == {
             "project": project,
             "files": files,
         }
         assert db_request.response.headers["X-PyPI-Last-Serial"] == "0"
 
-    def test_with_files_with_seiral(self, db_request):
+    def test_with_files_with_serial(self, db_request):
         project = ProjectFactory.create()
-        releases = [
-            ReleaseFactory.create(project=project)
-            for _ in range(3)
-        ]
+        releases = [ReleaseFactory.create(project=project) for _ in range(3)]
         files = [
             FileFactory.create(
-                release=r,
-                filename="{}-{}.tar.gz".format(project.name, r.version),
+                release=r, filename="{}-{}.tar.gz".format(project.name, r.version)
             )
             for r in releases
         ]
@@ -144,8 +143,71 @@ class TestSimpleDetail:
         user = UserFactory.create()
         je = JournalEntryFactory.create(name=project.name, submitted_by=user)
 
+        # Make sure that we get any changes made since the JournalEntry was
+        # saved.
+        db_request.db.refresh(project)
+
         assert simple.simple_detail(project, db_request) == {
             "project": project,
             "files": files,
         }
+        assert db_request.response.headers["X-PyPI-Last-Serial"] == str(je.id)
+
+    def test_with_files_with_version_multi_digit(self, db_request):
+        project = ProjectFactory.create()
+        releases = [ReleaseFactory.create(project=project) for _ in range(3)]
+        release_versions = [
+            "0.3.0rc1",
+            "0.3.0",
+            "0.3.0-post0",
+            "0.14.0",
+            "4.2.0",
+            "24.2.0",
+        ]
+
+        for release, version in zip(releases, release_versions):
+            release.version = version
+
+        tar_files = [
+            FileFactory.create(
+                release=r,
+                filename="{}-{}.tar.gz".format(project.name, r.version),
+                packagetype="sdist",
+            )
+            for r in releases
+        ]
+        wheel_files = [
+            FileFactory.create(
+                release=r,
+                filename="{}-{}.whl".format(project.name, r.version),
+                packagetype="bdist_wheel",
+            )
+            for r in releases
+        ]
+        egg_files = [
+            FileFactory.create(
+                release=r,
+                filename="{}-{}.egg".format(project.name, r.version),
+                packagetype="bdist_egg",
+            )
+            for r in releases
+        ]
+
+        files = []
+        for files_release in zip(egg_files, tar_files, wheel_files):
+            files += files_release
+
+        db_request.matchdict["name"] = project.normalized_name
+        user = UserFactory.create()
+        je = JournalEntryFactory.create(name=project.name, submitted_by=user)
+
+        # Make sure that we get any changes made since the JournalEntry was
+        # saved.
+        db_request.db.refresh(project)
+
+        assert simple.simple_detail(project, db_request) == {
+            "project": project,
+            "files": files,
+        }
+
         assert db_request.response.headers["X-PyPI-Last-Serial"] == str(je.id)
